@@ -50,8 +50,8 @@
 </head>
 <body>
 
-    <h2 class="title">🧊 Kyber MLWE 3D 격자(Lattice) 시각화</h2>
-    <p class="subtitle">비밀 s, 오차 e, 링 뒤틀림(shear)을 직접 조절하며 CVP(최근접 벡터 문제)를 눈으로 확인해보세요.</p>
+    <h2 class="title">격자 기반 암호</h2>
+    <p class="subtitle">2026.09.02</p>
 
     <div id="lattice-3d"></div>
 
@@ -99,7 +99,7 @@
         </ul>
 
         <div class="caveat">
-            ⚠️ 이 그림은 실제 512차원(Kyber-512 기준, k=2 × n=256) 격자를 문자 그대로 투영한 것이 아니라,
+            이 그림은 실제 512차원(Kyber-512 기준, k=2 × n=256) 격자를 문자 그대로 투영한 것이 아니라,
             그 구조 — 순환행렬로 찌그러진 기저 + 작은 정수 오차 + CVP — 를 3차원 장난감으로 축소한 모형입니다.
             실제 ML-KEM은 이런 브루트포스 CVP 대신, 링의 대수적 구조를 이용한 효율적인 복호화 알고리즘을 사용하며,
             안전성은 "충분히 무작위한 기저에서는 CVP가 다항 시간에 풀리지 않는다"는 격자 문제의 평균 난이도에 기반합니다.
@@ -198,7 +198,7 @@ function render(){
     };
 
     const layout = {
-        title: '<b>Kyber MLWE 격자 구조 (3D 토이 모델)</b>',
+        title: '<b>Kyber MLWE 격자 구조</b>',
         scene: {
             xaxis: { title: '다항식 차원 1' },
             yaxis: { title: '다항식 차원 2' },
@@ -216,10 +216,10 @@ function render(){
     const statusEl = document.getElementById('status');
     if(isMatch){
         statusEl.className = 'status ok';
-        statusEl.innerHTML = '✅ 최근접 격자점이 실제 비밀점 A·s와 <b>일치</b>합니다 — 이 오차 폭에서는 정상적으로 복호화됩니다.';
+        statusEl.innerHTML = '최근접 격자점이 실제 비밀점 A·s와 <b>일치</b>합니다 — 이 오차 폭에서는 정상적으로 복호화됩니다.';
     } else {
         statusEl.className = 'status fail';
-        statusEl.innerHTML = '⚠️ 최근접 격자점이 실제 비밀점과 <b>다릅니다</b> — 오차가 디코딩 반경을 넘어서면 이런 식으로 복호화 오류가 날 수 있습니다. η를 낮추거나 다시 샘플링해보세요.';
+        statusEl.innerHTML = '최근접 격자점이 실제 비밀점과 <b>다릅니다</b> — 오차가 디코딩 반경을 넘어서면 이런 식으로 복호화 오류가 날 수 있습니다. η를 낮추거나 다시 샘플링해보세요.';
     }
 }
 
