@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Kyber MLWE 3D 격자 시각화 (인터랙티브)</title>
+<script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+<style>
+    body {
+        font-family: 'Pretendard', -apple-system, 'Apple SD Gothic Neo', sans-serif;
+        display: flex; flex-direction: column; align-items: center;
+        padding: 24px 16px 60px; background-color: #f8fafc; color: #1e293b; margin:0;
+    }
+    h2.title { font-size: 20px; margin: 4px 0 2px; }
+    p.subtitle { color:#64748b; font-size:13.5px; margin:0 0 18px; }
+
+    #lattice-3d {
+        width: 100%; max-width: 900px; height: 620px;
+        box-shadow: 0 4px 16px rgba(0,0,0,0.08); background-color: white; border-radius: 10px;
+    }
+
+    .panel {
+        width:100%; max-width:900px; background:white; border-radius:10px;
+        box-shadow: 0 4px 16px rgba(0,0,0,0.06); padding: 20px 24px; margin-top: 16px;
+    }
+    .ctrl-row { display:grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px 28px; }
+    @media (max-width:640px){ .ctrl-row{ grid-template-columns: 1fr; } }
+    .ctrl { margin-bottom: 6px; }
+    .ctrl label { display:flex; justify-content:space-between; font-size:13px; color:#475569; margin-bottom:5px; }
+    .ctrl label b { color:#0f172a; font-weight:600; }
+    .ctrl input[type=range] { width:100%; accent-color:#3B82F6; }
+
+    .btns { display:flex; gap:10px; margin-top:14px; flex-wrap:wrap; }
+    button.action {
+        background:#0f172a; color:white; border:none; border-radius:6px;
+        padding:9px 16px; font-size:13px; cursor:pointer;
+    }
+    button.action.secondary { background:white; color:#0f172a; border:1px solid #cbd5e1; }
+    button.action:hover { opacity:0.85; }
+
+    .status { margin-top:14px; padding:12px 14px; border-radius:8px; font-size:13.5px; line-height:1.6; }
+    .status.ok { background:#ecfdf5; color:#065f46; border:1px solid #a7f3d0; }
+    .status.fail { background:#fef2f2; color:#991b1b; border:1px solid #fecaca; }
+
+    .description { max-width: 900px; margin-top: 20px; line-height: 1.7; color: #334155; font-size:14.5px; }
+    .description h3 { font-size:16.5px; margin-bottom:8px; }
+    .description code { background:#f1f5f9; padding:1px 6px; border-radius:4px; font-size:13px; color:#334155; }
+    .description .caveat { margin-top:14px; padding:12px 14px; background:#fffbeb; border:1px solid #fde68a; border-radius:8px; color:#78350f; font-size:13.5px; }
+</style>
+</head>
+<body>
+
+    <h2 class="title">🧊 Kyber MLWE 3D 격자(Lattice) 시각화</h2>
+    <p class="subtitle">비밀 s, 오차 e, 링 뒤틀림(shear)을 직접 조절하며 CVP(최근접 벡터 문제)를 눈으로 확인해보세요.</p>
+
+    <div id="lattice-3d"></div>
+
+    <div class="panel">
+        <div class="ctrl-row">
+            <div class="ctrl">
+                <label>비밀 계수 s₁ <b id="lblS1">1</b></label>
+                <input type="range" id="s1" min="-2" max="2" step="1" value="1">
+            </div>
+            <div class="ctrl">
+                <label>비밀 계수 s₂ <b id="lblS2">1</b></label>
+                <input type="range" id="s2" min="-2" max="2" step="1" value="1">
+            </div>
+            <div class="ctrl">
+                <label>비밀 계수 s₃ <b id="lblS3">1</b></label>
+                <input type="range" id="s3" min="-2" max="2" step="1" value="1">
+            </div>
+            <div class="ctrl">
+                <label>링 뒤틀림(순환행렬 skew) <b id="lblShear">1.0</b></label>
+                <input type="range" id="shear" min="0" max="1" step="0.05" value="1">
+            </div>
+            <div class="ctrl">
+                <label>오차 폭 η (중심이항분포) <b id="lblEta">3</b></label>
+                <input type="range" id="eta" min="1" max="6" step="1" value="3">
+            </div>
+            <div class="ctrl">
+                <label>격자 확장 범위 <b id="lblExtent">±3</b></label>
+                <input type="range" id="extent" min="2" max="4" step="1" value="3">
+            </div>
+        </div>
+        <div class="btns">
+            <button class="action" id="reroll">오차 e 다시 샘플링 ↻</button>
+            <button class="action secondary" id="resetCam">카메라 초기화</button>
+        </div>
+        <div class="status" id="status"></div>
+    </div>
+
+    <div class="description">
+        <h3>보는 법</h3>
+        <ul>
+            <li><b>회색 점 (격자망):</b> 기저벡터 b1,b2,b3로 생성 가능한 모든 정수 조합 i·b1+j·b2+k·b3. "링 뒤틀림" 슬라이더를 0으로 두면 정육면체 격자(직교 기저), 1로 두면 순환(anti-circulant) 다항식 곱셈이 만드는 것과 비슷하게 찌그러진 기저가 됩니다.</li>
+            <li><b>파란 점 (A·s):</b> 비밀 계수 s₁,s₂,s₃로 결정되는, 노이즈가 없는 <b>정확한 격자점</b>입니다.</li>
+            <li><b>빨간 십자 (b = A·s + e):</b> 실제로 공개되는 값. 여기에 <b>Kyber와 동일한 중심이항분포 CBD(η)</b>로 뽑은 오차 e가 더해져 격자점에서 살짝 벗어난 위치입니다.</li>
+            <li><b>주황 다이아몬드:</b> 공격자가 "회색 점 중 b에 가장 가까운 점"을 브루트포스로 찾은 결과(CVP 근사). η가 작으면 파란 점과 일치하지만, η를 키우면 엉뚱한 점이 뽑히는 순간이 옵니다 — 그게 바로 복호화 실패/공격 실패 경계입니다.</li>
+        </ul>
+
+        <div class="caveat">
+            ⚠️ 이 그림은 실제 512차원(Kyber-512 기준, k=2 × n=256) 격자를 문자 그대로 투영한 것이 아니라,
+            그 구조 — 순환행렬로 찌그러진 기저 + 작은 정수 오차 + CVP — 를 3차원 장난감으로 축소한 모형입니다.
+            실제 ML-KEM은 이런 브루트포스 CVP 대신, 링의 대수적 구조를 이용한 효율적인 복호화 알고리즘을 사용하며,
+            안전성은 "충분히 무작위한 기저에서는 CVP가 다항 시간에 풀리지 않는다"는 격자 문제의 평균 난이도에 기반합니다.
+        </div>
+    </div>
+
+<script>
+// Kyber 참조 구현과 동일한 방식(중심이항분포): eta개의 동전을 두 번 던진 차이를 오차로 사용
+function sampleCBD(eta){
+    let a=0,b=0;
+    for(let i=0;i<eta;i++){
+        if(Math.random()<0.5) a++;
+        if(Math.random()<0.5) b++;
+    }
+    return a-b;
+}
+
+function getBasis(shear){
+    // shear=0 -> 직교 정육면체 기저, shear=1 -> 순환행렬 스타일로 찌그러진 기저
+    return {
+        b1: [2.0, -0.2*shear, 0.3*shear],
+        b2: [0.5*shear, 2.0, -0.1*shear],
+        b3: [-0.2*shear, 0.4*shear, 2.0]
+    };
+}
+
+function addVec(a,b){ return [a[0]+b[0], a[1]+b[1], a[2]+b[2]]; }
+function scaleVec(v,s){ return [v[0]*s, v[1]*s, v[2]*s]; }
+
+function render(){
+    const s1 = parseInt(document.getElementById('s1').value);
+    const s2 = parseInt(document.getElementById('s2').value);
+    const s3 = parseInt(document.getElementById('s3').value);
+    const shear = parseFloat(document.getElementById('shear').value);
+    const eta = parseInt(document.getElementById('eta').value);
+    const extent = parseInt(document.getElementById('extent').value);
+
+    document.getElementById('lblS1').textContent = s1;
+    document.getElementById('lblS2').textContent = s2;
+    document.getElementById('lblS3').textContent = s3;
+    document.getElementById('lblShear').textContent = shear.toFixed(2);
+    document.getElementById('lblEta').textContent = eta;
+    document.getElementById('lblExtent').textContent = '±' + extent;
+
+    const { b1, b2, b3 } = getBasis(shear);
+
+    const latticeX = [], latticeY = [], latticeZ = [];
+    let nearest = null, nearestDist = Infinity;
+
+    // 오차 벡터 (다항식 오차를 3좌표로 축소한 근사, 진폭은 격자 간격 대비 작게 스케일링)
+    const errScale = 0.28;
+    const e = [sampleCBD(eta)*errScale, sampleCBD(eta)*errScale, sampleCBD(eta)*errScale];
+
+    const target = addVec(addVec(scaleVec(b1,s1), scaleVec(b2,s2)), scaleVec(b3,s3));
+    const bPoint = addVec(target, e);
+
+    for(let i=-extent;i<=extent;i++){
+        for(let j=-extent;j<=extent;j++){
+            for(let k=-extent;k<=extent;k++){
+                const p = addVec(addVec(scaleVec(b1,i), scaleVec(b2,j)), scaleVec(b3,k));
+                latticeX.push(p[0]); latticeY.push(p[1]); latticeZ.push(p[2]);
+                const d = (p[0]-bPoint[0])**2 + (p[1]-bPoint[1])**2 + (p[2]-bPoint[2])**2;
+                if(d < nearestDist){ nearestDist = d; nearest = p; }
+            }
+        }
+    }
+
+    const isMatch = nearest[0]===target[0] && nearest[1]===target[1] && nearest[2]===target[2];
+
+    const traceLattice = {
+        x: latticeX, y: latticeY, z: latticeZ,
+        mode: 'markers', type: 'scatter3d', name: 'MLWE 격자점 공간',
+        marker: { size: 4, color: '#CBD5E1', opacity: 0.55 }, hoverinfo: 'none'
+    };
+    const traceTarget = {
+        x: [target[0]], y: [target[1]], z: [target[2]],
+        mode: 'markers+text', type: 'scatter3d', name: '완벽한 격자점 (A·s)',
+        text: ['A·s (비밀)'], textposition: 'top center',
+        marker: { size: 9, color: '#3B82F6', symbol: 'circle', line: { color: 'white', width: 2 } }
+    };
+    const traceB = {
+        x: [bPoint[0]], y: [bPoint[1]], z: [bPoint[2]],
+        mode: 'markers+text', type: 'scatter3d', name: '공개키 관측점 (b)',
+        text: ['b (공개키)'], textposition: 'bottom right',
+        marker: { size: 11, color: '#EF4444', symbol: 'cross' }
+    };
+    const traceErrorLine = {
+        x: [target[0], bPoint[0]], y: [target[1], bPoint[1]], z: [target[2], bPoint[2]],
+        mode: 'lines', type: 'scatter3d', name: '오차 벡터 (e)',
+        line: { color: '#10B981', width: 5, dash: 'dot' }
+    };
+    const traceNearest = {
+        x: [nearest[0]], y: [nearest[1]], z: [nearest[2]],
+        mode: 'markers', type: 'scatter3d', name: '공격자의 최근접 격자점 (CVP 결과)',
+        marker: { size: 9, color: '#F59E0B', symbol: 'diamond-open', line: { width: 3 } }
+    };
+
+    const layout = {
+        title: '<b>Kyber MLWE 격자 구조 (3D 토이 모델)</b>',
+        scene: {
+            xaxis: { title: '다항식 차원 1' },
+            yaxis: { title: '다항식 차원 2' },
+            zaxis: { title: '다항식 차원 3' },
+            aspectmode: 'cube'
+        },
+        margin: { l: 0, r: 0, b: 0, t: 50 },
+        showlegend: true,
+        legend: { x: 0, y: 1 },
+        uirevision: 'keep-camera'
+    };
+
+    Plotly.react('lattice-3d', [traceLattice, traceTarget, traceB, traceErrorLine, traceNearest], layout);
+
+    const statusEl = document.getElementById('status');
+    if(isMatch){
+        statusEl.className = 'status ok';
+        statusEl.innerHTML = '✅ 최근접 격자점이 실제 비밀점 A·s와 <b>일치</b>합니다 — 이 오차 폭에서는 정상적으로 복호화됩니다.';
+    } else {
+        statusEl.className = 'status fail';
+        statusEl.innerHTML = '⚠️ 최근접 격자점이 실제 비밀점과 <b>다릅니다</b> — 오차가 디코딩 반경을 넘어서면 이런 식으로 복호화 오류가 날 수 있습니다. η를 낮추거나 다시 샘플링해보세요.';
+    }
+}
+
+['s1','s2','s3','shear','eta','extent'].forEach(id => {
+    document.getElementById(id).addEventListener('input', render);
+});
+document.getElementById('reroll').addEventListener('click', render);
+document.getElementById('resetCam').addEventListener('click', () => {
+    Plotly.relayout('lattice-3d', {'scene.camera': {eye:{x:1.5,y:1.5,z:1.5}}});
+});
+
+render();
+</script>
+</body>
+</html>
