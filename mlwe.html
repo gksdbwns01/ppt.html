@@ -42,6 +42,13 @@
     .status.ok { background:#ecfdf5; color:#065f46; border:1px solid #a7f3d0; }
     .status.fail { background:#fef2f2; color:#991b1b; border:1px solid #fecaca; }
 
+    .dist-box { margin-top: 10px; padding: 10px; border-radius: 6px; font-size: 13px; }
+    .status.ok .dist-box { background: rgba(255,255,255,0.6); border: 1px solid #a7f3d0; }
+    .status.fail .dist-box { background: rgba(255,255,255,0.6); border: 1px solid #fecaca; }
+    .dist-row { display: flex; justify-content: space-between; padding: 3px 0; border-bottom: 1px dashed rgba(0,0,0,0.1); }
+    .dist-row:last-child { border-bottom: none; }
+    .dist-target { font-weight: bold; }
+
     .description { max-width: 900px; margin-top: 20px; line-height: 1.7; color: #334155; font-size:14.5px; }
     .description h3 { font-size:16.5px; margin-bottom:8px; }
     .description code { background:#f1f5f9; padding:1px 6px; border-radius:4px; font-size:13px; color:#334155; }
@@ -146,7 +153,7 @@ function render(){
     const { b1, b2, b3 } = getBasis(shear);
 
     const latticeX = [], latticeY = [], latticeZ = [];
-    let nearest = null, nearestDist = Infinity;
+    const candidates = [];
 
     // 오차 벡터 (다항식 오차를 3좌표로 축소한 근사, 진폭은 격자 간격 대비 작게 스케일링)
     const errScale = 0.28;
@@ -160,11 +167,18 @@ function render(){
             for(let k=-extent;k<=extent;k++){
                 const p = addVec(addVec(scaleVec(b1,i), scaleVec(b2,j)), scaleVec(b3,k));
                 latticeX.push(p[0]); latticeY.push(p[1]); latticeZ.push(p[2]);
-                const d = (p[0]-bPoint[0])**2 + (p[1]-bPoint[1])**2 + (p[2]-bPoint[2])**2;
-                if(d < nearestDist){ nearestDist = d; nearest = p; }
+                
+                // 유클리드 거리 계산
+                const d = Math.sqrt((p[0]-bPoint[0])**2 + (p[1]-bPoint[1])**2 + (p[2]-bPoint[2])**2);
+                candidates.push({ point: p, dist: d, i, j, k });
             }
         }
     }
+
+    // 거리순 오름차순 정렬
+    candidates.sort((a, b) => a.dist - b.dist);
+    const topCandidates = candidates.slice(0, 4); // 상위 4개 추출
+    const nearest = topCandidates[0].point;
 
     const isMatch = nearest[0]===target[0] && nearest[1]===target[1] && nearest[2]===target[2];
 
@@ -212,13 +226,29 @@ function render(){
 
     Plotly.react('lattice-3d', [traceLattice, traceTarget, traceB, traceErrorLine, traceNearest], layout);
 
+    // 상위 후보 거리 비교 UI 생성
+    let distHTML = `<div class="dist-box"><div style="font-weight:bold; margin-bottom:6px; color:#334155;">관측점(b)과 가장 가까운 격자점 Top 3</div>`;
+    topCandidates.slice(0, 3).forEach((cand, idx) => {
+        const isTarget = cand.point[0]===target[0] && cand.point[1]===target[1] && cand.point[2]===target[2];
+        const rowClass = isTarget ? 'dist-row dist-target' : 'dist-row';
+        const color = isTarget ? (isMatch ? '#065f46' : '#991b1b') : '#475569';
+        
+        distHTML += `
+            <div class="${rowClass}" style="color:${color};">
+                <span>${idx + 1}위: [${cand.point[0].toFixed(1)}, ${cand.point[1].toFixed(1)}, ${cand.point[2].toFixed(1)}] ${isTarget ? '(실제 A·s)' : ''}</span>
+                <span>거리: <b>${cand.dist.toFixed(3)}</b></span>
+            </div>
+        `;
+    });
+    distHTML += `</div>`;
+
     const statusEl = document.getElementById('status');
     if(isMatch){
         statusEl.className = 'status ok';
-        statusEl.innerHTML = '최근접 격자점이 실제 비밀점 A·s와 <b>일치</b>합니다 — 이 오차 폭에서는 정상적으로 복호화됩니다.';
+        statusEl.innerHTML = '최근접 격자점이 실제 비밀점 A·s와 <b>일치</b>합니다 — 이 오차 폭에서는 정상적으로 복호화됩니다.' + distHTML;
     } else {
         statusEl.className = 'status fail';
-        statusEl.innerHTML = '최근접 격자점이 실제 비밀점과 <b>다릅니다</b> — 오차가 커지면서 관측점 b가 다른 격자점에 더 가까워진 상황입니다. 실제 ML-KEM의 복호화 과정과는 다른 3차원 교육용 모델입니다.';
+        statusEl.innerHTML = '최근접 격자점이 실제 비밀점과 <b>다릅니다</b> — 오차가 커지면서 관측점 b가 다른 격자점에 더 가까워진 상황입니다.' + distHTML;
     }
 }
 
