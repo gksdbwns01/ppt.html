@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Chaos Pendulum Authentication (CPA) - 3D Viewer</title>
+    <style>
+        body { font-family: 'Consolas', 'Courier New', monospace; background-color: #121212; color: #e0e0e0; margin: 0; padding: 20px; display: flex; flex-direction: column; align-items: center; }
+        h1 { color: #00ffcc; font-size: 24px; text-align: center; margin-bottom: 5px; }
+        .subtitle { font-size: 14px; color: #888; margin-bottom: 20px; text-align: center; }
+        
+        .container { display: flex; flex-wrap: wrap; gap: 20px; max-width: 1200px; justify-content: center; width: 100%; }
+        .panel { background: #1e1e1e; border: 1px solid #333; padding: 15px; border-radius: 8px; flex: 1; min-width: 320px; box-shadow: 0 4px 6px rgba(0,0,0,0.5); }
+        .panel h2 { font-size: 17px; border-bottom: 1px solid #444; padding-bottom: 5px; margin-top: 0; color: #ffaa00; }
+        
+        label { display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 13px; align-items: center; }
+        input[type="number"] { width: 70px; background: #333; border: 1px solid #555; color: #fff; text-align: right; padding: 3px; }
+        button { background: #00ffcc; color: #000; border: none; padding: 12px 20px; font-size: 16px; font-weight: bold; cursor: pointer; border-radius: 4px; width: 100%; margin-top: 10px; transition: background 0.3s; }
+        button:hover { background: #00cca3; }
+        
+        .canvas-container { display: flex; flex-direction: column; align-items: center; }
+        canvas { background: #000; border: 1px solid #444; margin-bottom: 10px; border-radius: 4px; box-shadow: inset 0 0 10px rgba(0,0,0,1); }
+        .desc { font-size: 12px; color: #888; margin-bottom: 15px; text-align: center; line-height: 1.4; }
+        
+        .result-box { background: #0a0a0a; border: 1px dashed #00ffcc; padding: 15px; margin-top: 20px; width: 100%; max-width: 1160px; text-align: center; word-break: break-all; font-size: 18px; color: #00ffcc; }
+    </style>
+</head>
+<body>
+
+    <h1>3D 카오스 진자 전자서명 (CPA)</h1>
+    <div class="subtitle">내부 3D 물리엔진 작동 및 AI 방어(2D 투영) 시각화 뷰어</div>
+    
+    <div class="container">
+        <!-- 1. 사용자 비밀키 -->
+        <div class="panel">
+            <h2>🔑 사용자 비밀키 (Private Key)</h2>
+            <div class="desc">사용자 고유의 3D 진자 초기 세팅값</div>
+            <label>관절 1 길이: <input type="number" id="L1" value="50"></label>
+            <label>관절 2 길이: <input type="number" id="L2" value="40"></label>
+            <label>관절 3 길이: <input type="number" id="L3" value="30"></label>
+            <label>초기 X 방향 힘: <input type="number" id="forceX" value="15"></label>
+            <label>초기 Z 방향 힘 (깊이): <input type="number" id="forceZ" value="-10"></label>
+            <label>투명벽 반경 (충돌 유발): <input type="number" id="wallSize" value="70"></label>
+        </div>
+
+        <!-- 2. 서버 챌린지 -->
+        <div class="panel">
+            <h2>🎲 서버 챌린지 (Nonce / Wind)</h2>
+            <div class="desc">인증마다 서버가 제공하는 환경 난수 변수</div>
+            <label>중력 가속도: <input type="number" id="gravity" value="9.8" step="0.1"></label>
+            <label>X축 바람 세기: <input type="number" id="windX" value="2.5" step="0.1"></label>
+            <label>Z축 바람 세기: <input type="number" id="windZ" value="-1.2" step="0.1"></label>
+            <button onclick="startProcess()">시뮬레이션 및 서명 생성 ▶</button>
+        </div>
+    </div>
+
+    <div class="container" style="margin-top: 20px;">
+        
+        <!-- 3. [NEW] 3D 실제 궤적 검증 뷰 -->
+        <div class="panel canvas-container" style="border-color: #ff55ff;">
+            <h2 style="color: #ff55ff;">🧊 3D 검증 뷰 (내부 연산)</h2>
+            <div class="desc">서버와 기기가 계산하는 실제 3차원 운동<br>(회전하는 투명벽 안에서 튕기는 모습)</div>
+            <canvas id="canvas3D" width="300" height="300"></canvas>
+        </div>
+
+        <!-- 4. 2D 그림자 투영 -->
+        <div class="panel canvas-container">
+            <h2>👁️ 2D 그림자 투영</h2>
+            <div class="desc">[AI 방어 2] 3D 궤적에 위에서 빛을 쏴<br>Z축(깊이) 정보를 완전히 날린 2D 그림자</div>
+            <canvas id="canvasHD" width="300" height="300"></canvas>
+        </div>
+
+        <!-- 5. 해시용 최종 픽셀 -->
+        <div class="panel canvas-container">
+            <h2>🛡️ 서명용 최종 픽셀 (해싱)</h2>
+            <div class="desc">[AI 방어 3,4] 시간/속도 증발, 양자화 및<br>결정론적 노이즈(먼지) 추가 캔버스</div>
+            <canvas id="canvasLow" width="100" height="100" style="width: 300px; height: 300px; image-rendering: pixelated;"></canvas>
+        </div>
+
+    </div>
+
+    <div class="result-box">
+        <div style="font-size:14px; color:#aaa; margin-bottom: 5px;">최종 생성된 전자서명 (SHA-256 Hash):</div>
+        <div id="hashOutput">대기 중...</div>
+    </div>
+
+<script>
+    // 난수 생성기 (노이즈용)
+    class LCG {
+        constructor(seed) { this.state = seed; this.m = 0x80000000; this.a = 1103515245; this.c = 12345; }
+        nextFloat() { this.state = (this.a * this.state + this.c) % this.m; return this.state / (this.m - 1); }
+    }
+
+    let animId = null;
+    let frames = [];
+    let currentFrame = 0;
+    let cameraAngle = 0;
+
+    // 3D 좌표를 2D 캔버스에 원근감 있게 투영하는 함수
+    function project3D(x, y, z, angle) {
+        // Y축(세로축) 기준으로 회전
+        let rx = x * Math.cos(angle) - z * Math.sin(angle);
+        let rz = x * Math.sin(angle) + z * Math.cos(angle);
+        
+        // 원근법(Perspective) 적용
+        let fov = 400;
+        let distance = 250; 
+        let scale = fov / (fov + rz + distance);
+        
+        return {
+            x: (rx * scale) + 150,  // 중앙 정렬 (width/2)
+            y: (y * scale) + 50,    // 상단 오프셋
+            scale: scale
+        };
+    }
+
+    async function startProcess() {
+        if(animId) cancelAnimationFrame(animId); // 기존 애니메이션 중지
+        frames = [];
+        currentFrame = 0;
+        cameraAngle = 0;
+        
+        const wallSize = parseFloat(document.getElementById('wallSize').value);
+        document.getElementById('hashOutput').innerText = "해시 계산 중...";
+
+        // 1. 물리 시뮬레이션 계산 (한 번에 즉시 계산)
+        calculatePhysics();
+
+        // 2. 애니메이션 렌더링 시작
+        animId = requestAnimationFrame(() => renderAnimation(wallSize));
+    }
+
+    function calculatePhysics() {
+        // UI 설정값 가져오기
+        const L1 = parseFloat(document.getElementById('L1').value);
+        const L2 = parseFloat(document.getElementById('L2').value);
+        const L3 = parseFloat(document.getElementById('L3').value);
+        const forceX = parseFloat(document.getElementById('forceX').value);
+        const forceZ = parseFloat(document.getElementById('forceZ').value);
+        const wallSize = parseFloat(document.getElementById('wallSize').value);
+        const gravity = parseFloat(document.getElementById('gravity').value);
+        const windX = parseFloat(document.getElementById('windX').value);
+        const windZ = parseFloat(document.getElementById('windZ').value);
+
+        const canvasLow = document.getElementById('canvasLow');
+        const ctxLow = canvasLow.getContext('2d');
+        ctxLow.clearRect(0, 0, canvasLow.width, canvasLow.height);
+        ctxLow.fillStyle = "#ffffff"; 
+        ctxLow.fillRect(0, 0, canvasLow.width, canvasLow.height);
+
+        let nodes = [
+            { x: 0, y: 0, z: 0, oldX: 0, oldY: 0, oldZ: 0 },
+            { x: L1, y: 0, z: 0, oldX: L1, oldY: 0, oldZ: 0 },
+            { x: L1+L2, y: 0, z: 0, oldX: L1+L2, oldY: 0, oldZ: 0 },
+            { x: L1+L2+L3, y: 0, z: 0, oldX: L1+L2+L3 - forceX, oldY: 0, oldZ: -forceZ }
+        ];
+        const lengths = [L1, L2, L3];
+        const dt = 0.1;
+        const steps = 800; // 총 계산 프레임
+
+        for (let step = 0; step < steps; step++) {
+            for (let i = 1; i < nodes.length; i++) {
+                let node = nodes[i];
+                let vx = node.x - node.oldX;
+                let vy = node.y - node.oldY;
+                let vz = node.z - node.oldZ;
+                node.oldX = node.x; node.oldY = node.y; node.oldZ = node.z;
+
+                node.x += vx + windX * dt * dt;
+                node.y += vy + gravity * dt * dt;
+                node.z += vz + windZ * dt * dt;
+
+                // [충돌벽 반사] - 3D 뷰어에서 튕기는 모습을 볼 수 있음
+                if (node.x > wallSize) { node.x = wallSize; node.oldX = node.x + vx * 0.8; }
+                if (node.x < -wallSize) { node.x = -wallSize; node.oldX = node.x + vx * 0.8; }
+                if (node.z > wallSize) { node.z = wallSize; node.oldZ = node.z + vz * 0.8; }
+                if (node.z < -wallSize) { node.z = -wallSize; node.oldZ = node.z + vz * 0.8; }
+            }
+
+            for (let iter = 0; iter < 3; iter++) {
+                for (let i = 0; i < 3; i++) {
+                    let n1 = nodes[i], n2 = nodes[i+1];
+                    let dx = n2.x - n1.x, dy = n2.y - n1.y, dz = n2.z - n1.z;
+                    let dist = Math.sqrt(dx*dx + dy*dy + dz*dz);
+                    let diff = lengths[i] - dist;
+                    let percent = diff / dist / 2;
+                    let ox = dx * percent, oy = dy * percent, oz = dz * percent;
+                    if (i > 0) { n1.x -= ox; n1.y -= oy; n1.z -= oz; }
+                    n2.x += ox; n2.y += oy; n2.z += oz;
+                }
+            }
+
+            // 배열에 현재 상태 복사 저장 (애니메이션용)
+            frames.push(JSON.parse(JSON.stringify(nodes)));
+
+            // 해시용 캔버스는 루프 돌며 즉시 그리기 (시간축 삭제)
+            const lowX = (nodes[3].x / 3) + canvasLow.width / 2;
+            const lowY = (nodes[3].y / 3) + canvasLow.height / 2 - 15;
+            ctxLow.fillStyle = "#000000";
+            ctxLow.fillRect(Math.floor(lowX), Math.floor(lowY), 2, 2);
+        }
+
+        // 노이즈 추가 및 해싱
+        const seed = Math.floor(Math.abs(windX * 1000 + gravity * 100)); 
+        const rng = new LCG(seed === 0 ? 12345 : seed);
+        const imgData = ctxLow.getImageData(0, 0, canvasLow.width, canvasLow.height);
+        const pixels = imgData.data;
+        const noiseCount = Math.floor((canvasLow.width * canvasLow.height) * 0.02);
+        for(let i=0; i<noiseCount; i++) {
+            const index = (Math.floor(rng.nextFloat() * canvasLow.height) * canvasLow.width + Math.floor(rng.nextFloat() * canvasLow.width)) * 4;
+            pixels[index] = 0; pixels[index+1] = 0; pixels[index+2] = 0;
+        }
+        ctxLow.putImageData(imgData, 0, 0);
+
+        generateHash(pixels).then(hash => { document.getElementById('hashOutput').innerText = hash; });
+    }
+
+    // 애니메이션 렌더링 함수
+    function renderAnimation(wallSize) {
+        const ctxHD = document.getElementById('canvasHD').getContext('2d');
+        const ctx3D = document.getElementById('canvas3D').getContext('2d');
+        
+        ctxHD.clearRect(0, 0, 300, 300);
+        ctx3D.clearRect(0, 0, 300, 300);
+
+        // 1. 3D 투명벽(바운딩 박스) 그리기
+        draw3DBoundaryBox(ctx3D, wallSize, cameraAngle);
+
+        // 2. 궤적 그리기 (0번 프레임부터 현재 프레임까지)
+        ctxHD.beginPath(); ctxHD.strokeStyle = "#00ffcc"; ctxHD.lineWidth = 1;
+        ctx3D.beginPath(); ctx3D.strokeStyle = "#ff55ff"; ctx3D.lineWidth = 1;
+
+        for (let i = 0; i <= currentFrame; i++) {
+            let n = frames[i][3]; // 마지막 관절(펜촉)
+            
+            // 2D 투영 (Z 무시)
+            if (i === 0) ctxHD.moveTo(n.x + 150, n.y + 100);
+            else ctxHD.lineTo(n.x + 150, n.y + 100);
+
+            // 3D 투영 (회전 카메라 적용)
+            let p = project3D(n.x, n.y, n.z, cameraAngle);
+            if (i === 0) ctx3D.moveTo(p.x, p.y);
+            else ctx3D.lineTo(p.x, p.y);
+        }
+        ctxHD.stroke(); ctx3D.stroke();
+
+        // 3. 현재 프레임의 진자 막대기 그리기
+        let currentNodes = frames[currentFrame];
+        
+        // 2D 진자 막대
+        ctxHD.beginPath(); ctxHD.strokeStyle = "#ffffff"; ctxHD.lineWidth = 2;
+        ctxHD.moveTo(currentNodes[0].x + 150, currentNodes[0].y + 100);
+        for(let i=1; i<4; i++) ctxHD.lineTo(currentNodes[i].x + 150, currentNodes[i].y + 100);
+        ctxHD.stroke();
+
+        // 3D 진자 막대
+        ctx3D.beginPath(); ctx3D.strokeStyle = "#ffffff"; ctx3D.lineWidth = 2;
+        let p0 = project3D(currentNodes[0].x, currentNodes[0].y, currentNodes[0].z, cameraAngle);
+        ctx3D.moveTo(p0.x, p0.y);
+        for(let i=1; i<4; i++) {
+            let p = project3D(currentNodes[i].x, currentNodes[i].y, currentNodes[i].z, cameraAngle);
+            ctx3D.lineTo(p.x, p.y);
+        }
+        ctx3D.stroke();
+
+        // 카메라 회전 및 프레임 전진
+        cameraAngle += 0.01; // 천천히 회전
+        if (currentFrame < frames.length - 1) {
+            currentFrame += 3; // 3배속 재생
+            if(currentFrame >= frames.length) currentFrame = frames.length - 1;
+        }
+
+        // 계속 루프 돌면서 회전 유지
+        animId = requestAnimationFrame(() => renderAnimation(wallSize));
+    }
+
+    // 3D 바운딩 박스 그리는 헬퍼 함수
+    function draw3DBoundaryBox(ctx, w, angle) {
+        ctx.strokeStyle = "rgba(100, 100, 100, 0.5)"; // 반투명 회색
+        ctx.lineWidth = 1;
+        
+        // 바닥 4모서리 (Y는 대략 140 부근)
+        let bY = 300; 
+        let tY = -300; // 천장
+        let p1 = project3D(-w, bY, -w, angle); let p2 = project3D(w, bY, -w, angle);
+        let p3 = project3D(w, bY, w, angle); let p4 = project3D(-w, bY, w, angle);
+        let t1 = project3D(-w, tY, -w, angle); let t2 = project3D(w, tY, -w, angle);
+        let t3 = project3D(w, tY, w, angle); let t4 = project3D(-w, tY, w, angle);
+
+        // 바닥면
+        ctx.beginPath(); ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y); ctx.lineTo(p3.x, p3.y); ctx.lineTo(p4.x, p4.y); ctx.closePath(); ctx.stroke();
+        // 천장면
+        ctx.beginPath(); ctx.moveTo(t1.x, t1.y); ctx.lineTo(t2.x, t2.y); ctx.lineTo(t3.x, t3.y); ctx.lineTo(t4.x, t4.y); ctx.closePath(); ctx.stroke();
+        // 기둥 4개
+        ctx.beginPath(); ctx.moveTo(p1.x, p1.y); ctx.lineTo(t1.x, t1.y); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(p2.x, p2.y); ctx.lineTo(t2.x, t2.y); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(p3.x, p3.y); ctx.lineTo(t3.x, t3.y); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(p4.x, p4.y); ctx.lineTo(t4.x, t4.y); ctx.stroke();
+    }
+
+    async function generateHash(pixelData) {
+        const msgUint8 = new Uint8Array(pixelData); 
+        const hashBuffer = await crypto.subtle.digest('SHA-256', msgUint8);
+        return Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
+    }
+
+    window.onload = startProcess;
+</script>
+
+</body>
+</html>
