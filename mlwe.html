@@ -218,7 +218,7 @@ function render(){
         statusEl.innerHTML = '최근접 격자점이 실제 비밀점 A·s와 <b>일치</b>합니다 — 이 오차 폭에서는 정상적으로 복호화됩니다.';
     } else {
         statusEl.className = 'status fail';
-        statusEl.innerHTML = '최근접 격자점이 실제 비밀점과 <b>다릅니다</b> — 오차가 디코딩 반경을 넘어서면 이런 식으로 복호화 오류가 날 수 있습니다. η를 낮추거나 다시 샘플링해보세요.';
+        statusEl.innerHTML = '최근접 격자점이 실제 비밀점과 <b>다릅니다</b> — 오차가 커지면서 관측점 b가 다른 격자점에 더 가까워진 상황입니다. 실제 ML-KEM의 복호화 과정과는 다른 3차원 교육용 모델입니다.';
     }
 }
 
